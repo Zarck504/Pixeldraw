@@ -1,0 +1,192 @@
+---
+import Layout from '../layouts/Layout.astro';
+import '../styles/Landing.css';
+
+// Pixel art smiley face pattern for mockup (16x16 grid, 256 cells)
+// 1 = filled black, 2 = accent purple, 0 = empty
+const pixelPattern = [
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,
+  0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,
+  0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,
+  0,0,1,0,0,2,0,0,0,0,2,0,0,1,0,0,
+  0,0,1,0,0,2,0,0,0,0,2,0,0,1,0,0,
+  0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,
+  0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,
+  0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,
+  0,0,1,0,2,0,0,0,0,0,0,2,0,1,0,0,
+  0,0,1,0,0,2,0,0,0,0,2,0,0,1,0,0,
+  0,0,0,1,0,0,2,2,2,2,0,0,1,0,0,0,
+  0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,
+  0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+];
+---
+
+<Layout title="PixelDraw — Lienzo Colaborativo de Pixel Art">
+  <!-- Background Effects -->
+  <div class="landing-bg">
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+    <div class="pixel-particle"></div>
+  </div>
+
+  <!-- Navbar -->
+  <nav class="landing-nav">
+    <div class="container nav-inner">
+      <a href="/" class="nav-logo">
+        <div class="nav-logo-icon">
+          <div class="nav-logo-pixel" style="background: #7c3aed;"></div>
+          <div class="nav-logo-pixel" style="background: #8b5cf6;"></div>
+          <div class="nav-logo-pixel" style="background: #06b6d4;"></div>
+          <div class="nav-logo-pixel" style="background: #a78bfa;"></div>
+          <div class="nav-logo-pixel" style="background: #7c3aed;"></div>
+          <div class="nav-logo-pixel" style="background: #8b5cf6;"></div>
+          <div class="nav-logo-pixel" style="background: #06b6d4;"></div>
+          <div class="nav-logo-pixel" style="background: #a78bfa;"></div>
+          <div class="nav-logo-pixel" style="background: #7c3aed;"></div>
+        </div>
+        <span class="gradient-text">PixelDraw</span>
+      </a>
+      <div class="nav-actions">
+        <a href="/auth" class="btn btn-ghost" id="nav-login-btn">Iniciar Sesión</a>
+        <a href="/auth#register" class="btn btn-primary" id="nav-register-btn">Registrarse</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero" id="hero">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        Lienzo abierto — dibuja ahora
+      </div>
+
+      <h1>
+        Un lienzo.<br/>
+        <span class="gradient-text">Millones de píxeles.</span><br/>
+        Todos dibujan.
+      </h1>
+
+      <p class="hero-subtitle">
+        PixelDraw es un lienzo público de pixel art donde cada usuario puede contribuir con <strong>50 píxeles cada 12 horas</strong>. Cada punto cuenta. Cada trazo importa. Crea arte con el mundo.
+      </p>
+
+      <div class="hero-cta">
+        <a href="/auth#register" class="btn btn-primary" id="hero-register-btn">
+          🎨 Comenzar a Dibujar
+        </a>
+        <a href="#how-it-works" class="btn btn-secondary" id="hero-learn-btn">
+          Cómo Funciona ↓
+        </a>
+      </div>
+
+      <!-- Canvas Preview Mockup -->
+      <div class="hero-canvas-preview">
+        <div class="canvas-mockup">
+          <div class="canvas-mockup-grid">
+            {pixelPattern.map((val, i) => (
+              <div
+                class={`mock-pixel ${val === 1 ? 'filled' : ''} ${val === 2 ? 'accent' : ''}`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="container">
+      <h2 class="features-title">
+        ¿Por qué <span class="gradient-text">PixelDraw</span>?
+      </h2>
+
+      <div class="features-grid stagger-children">
+        <div class="feature-card">
+          <span class="feature-icon">🖌️</span>
+          <h3>Dibujo Colaborativo</h3>
+          <p>Un lienzo compartido donde todos los usuarios dibujan al mismo tiempo. Cada píxel que colocas es visible para todos en tiempo real.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">⏱️</span>
+          <h3>50 Píxeles / 12 Horas</h3>
+          <p>Cada cuota es valiosa. Tienes 50 píxeles cada 12 horas para dejar tu marca en el lienzo. Piensa bien dónde los colocas.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🌐</span>
+          <h3>Tiempo Real</h3>
+          <p>Observa cómo el lienzo cobra vida mientras otros usuarios dibujan. Cada trazo se sincroniza instantáneamente.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🔍</span>
+          <h3>Zoom y Exploración</h3>
+          <p>El lienzo es enorme. Haz zoom para ver los detalles o aléjate para admirar la obra completa de la comunidad.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🎯</span>
+          <h3>Cada Píxel Cuenta</h3>
+          <p>Puedes dibujar encima del trabajo de otros. Colabora, compite, o crea tu propio rincón del lienzo.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">📱</span>
+          <h3>Desde Cualquier Dispositivo</h3>
+          <p>Diseñado para funcionar en móviles, tablets y escritorio. Dibuja donde quieras, cuando quieras.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works Section -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <h2 class="how-title">
+        ¿Cómo <span class="gradient-text">funciona</span>?
+      </h2>
+
+      <div class="steps-container stagger-children">
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <h4>Crea tu cuenta</h4>
+          <p>Regístrate con tu correo y elige un nombre de usuario único.</p>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <h4>Abre el lienzo</h4>
+          <p>Explora el lienzo, haz zoom y encuentra el lugar perfecto para tu arte.</p>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <h4>Dibuja</h4>
+          <p>Haz clic en cualquier píxel para pintarlo. Tienes 50 píxeles cada 12 horas.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="landing-footer">
+    <div class="container">
+      <p>
+        Hecho con 🎨 por <span class="gradient-text">PixelDraw</span> — Proyecto de Desarrollo Web Profesional
+      </p>
+    </div>
+  </footer>
+</Layout>
