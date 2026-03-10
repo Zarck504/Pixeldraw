@@ -4,6 +4,6 @@ import vercel from '@astrojs/vercel';
 
 export default defineConfig({
   integrations: [react()],
-  output: 'server',
+  output: 'static',
   adapter: vercel(),
 });
