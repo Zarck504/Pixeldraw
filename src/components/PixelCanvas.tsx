@@ -11,14 +11,17 @@ const GRID_SIZE = 200; // 200x200 pixels
 const PIXEL_SIZE = 4;  // Each pixel is 4px on the internal canvas
 const CANVAS_PX = GRID_SIZE * PIXEL_SIZE; // 800px internal
 const BG_COLOR = '#ffffff';
-const GRID_COLOR = 'rgba(0, 0, 0, 0.70)'; // 70% de opacidad
+const GRID_COLOR = 'rgba(0, 0, 0, 0.70)';
 const PIXEL_COLOR = '#000000';
 
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.15;
 
-// Icons for the legend
+// Threshold para distinguir tap vs arrastre en móvil (píxeles)
+const TAP_THRESHOLD = 8;
+
+// Icons for the legend (desktop)
 const MouseLeftIcon = () => <img src="/clicizquierdo.png" alt="Clic izquierdo" className="legend-img-icon" />;
 const MouseRightIcon = () => <img src="/clicderecho.png" alt="Clic derecho" className="legend-img-icon" />;
 const MouseMiddleIcon = () => <img src="/scrollwheel.png" alt="Arrastrar" className="legend-img-icon" />;
@@ -27,6 +30,8 @@ const MouseScrollIcon = () => <img src="/scroll.png" alt="Scroll" className="leg
 interface PixelData {
   [key: string]: boolean; // "x,y" -> true
 }
+
+type TouchMode = 'draw' | 'erase' | 'pan';
 
 export default function PixelCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -43,7 +48,9 @@ export default function PixelCanvas() {
   const [mousePos, setMousePos] = useState({ x: -1, y: -1 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'error' | 'warn' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'error' | 'warn' | 'success' } | null>(null);
+  const [isBanned, setIsBanned] = useState(false);
+  const [touchMode, setTouchMode] = useState<TouchMode>('draw');
 
   const isAdmin = user?.email === '0131juanpablo@gmail.com';
 
@@ -58,6 +65,20 @@ export default function PixelCanvas() {
       window.location.href = '/auth';
     }
   }, [authLoading, user]);
+
+  // Check if user is banned
+  useEffect(() => {
+    if (!user) return;
+    const checkBan = async () => {
+      const { data } = await supabase
+        .from('banned_users')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setIsBanned(!!data);
+    };
+    checkBan();
+  }, [user]);
 
   // Load all pixels from Supabase
   useEffect(() => {
@@ -122,7 +143,6 @@ export default function PixelCanvas() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(0, 0, CANVAS_PX, CANVAS_PX);
 
@@ -131,14 +151,8 @@ export default function PixelCanvas() {
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= GRID_SIZE; i++) {
       const pos = i * PIXEL_SIZE;
-      ctx.beginPath();
-      ctx.moveTo(pos, 0);
-      ctx.lineTo(pos, CANVAS_PX);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, pos);
-      ctx.lineTo(CANVAS_PX, pos);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pos, 0); ctx.lineTo(pos, CANVAS_PX); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, pos); ctx.lineTo(CANVAS_PX, pos); ctx.stroke();
     }
 
     // Draw pixels
@@ -169,12 +183,8 @@ export default function PixelCanvas() {
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
-    
-    // Un zoom inicial más modesto para que se vea más área de la cuadrícula si cabe
-    setZoom(1); 
-    
+    setZoom(1);
     const rect = wrapper.getBoundingClientRect();
-    // Centrar basado en el tamaño físico del canvas renderizado
     setOffset({
       x: (rect.width - CANVAS_PX) / 2,
       y: (rect.height - CANVAS_PX) / 2,
@@ -193,13 +203,22 @@ export default function PixelCanvas() {
     return { x: gridX, y: gridY };
   }, [offset, zoom]);
 
+  const showToast = useCallback((message: string, type: 'error' | 'warn' | 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
   // Handle painting
   const paintPixel = useCallback(async (gridX: number, gridY: number) => {
     if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) return;
 
+    if (isBanned) {
+      showToast('⛔ Tu cuenta está suspendida. No puedes dibujar.', 'error');
+      return;
+    }
+
     if (remaining <= 0) {
-      setToast({ message: '¡Sin píxeles! Espera a que se recargue tu cuota.', type: 'warn' });
-      setTimeout(() => setToast(null), 3000);
+      showToast('¡Sin píxeles! Espera a que se recargue tu cuota.', 'warn');
       return;
     }
 
@@ -210,7 +229,6 @@ export default function PixelCanvas() {
     decrementLocal();
     const isNowZero = (remaining - 1) <= 0;
 
-    // Save to Supabase (upsert)
     const { error } = await supabase
       .from('pixels')
       .upsert(
@@ -220,36 +238,42 @@ export default function PixelCanvas() {
 
     if (error) {
       console.error('Supabase insert error:', error);
-      setToast({ message: `Error al guardar el píxel: ${error.message}`, type: 'error' });
-      setTimeout(() => setToast(null), 3000);
-      // Revert optimistic update
+      // Si el error es de RLS (usuario baneado)
+      if (error.code === '42501' || error.message?.toLowerCase().includes('ban')) {
+        setIsBanned(true);
+        showToast('⛔ Tu cuenta ha sido suspendida. No puedes dibujar.', 'error');
+      } else {
+        showToast(`Error al guardar el píxel: ${error.message}`, 'error');
+      }
       setPixels(prev => {
         const next = { ...prev };
         delete next[`${gridX},${gridY}`];
         return next;
       });
-      incrementLocal(); // Devolvemos el punto si falló la red
+      incrementLocal();
     } else if (isNowZero) {
       refetch();
     }
-  }, [remaining, user, decrementLocal, incrementLocal, refetch]);
+  }, [remaining, user, isBanned, decrementLocal, incrementLocal, refetch, showToast]);
 
   // Handle deleting pixel
   const deletePixel = useCallback(async (gridX: number, gridY: number) => {
     if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) return;
     if (!user) return;
 
-    if (remaining <= 0) {
-      setToast({ message: 'No puedes recuperar píxeles mientras tu cuota total esté agotada.', type: 'warn' });
-      setTimeout(() => setToast(null), 3000);
+    if (isBanned) {
+      showToast('⛔ Tu cuenta está suspendida.', 'error');
       return;
     }
-    
+
+    if (remaining <= 0) {
+      showToast('No puedes recuperar píxeles mientras tu cuota total esté agotada.', 'warn');
+      return;
+    }
+
     const key = `${gridX},${gridY}`;
-    // Si no hay pixel dibujado ahi, no hacemos nada
     if (!pixels[key]) return;
 
-    // Intentar borrar de supabase
     const { data, error } = await supabase
       .from('pixels')
       .delete()
@@ -257,30 +281,24 @@ export default function PixelCanvas() {
       .select();
 
     if (error) {
-      console.error('Supabase delete error:', error);
-      setToast({ message: `Error: Sólo puedes borrar tus propios píxeles.`, type: 'error' });
-      setTimeout(() => setToast(null), 3000);
+      showToast('Error: Sólo puedes borrar tus propios píxeles.', 'error');
     } else {
-      // Data = array con los records eliminados. Si es 0, no era suyo.
       if (data && data.length > 0) {
-        // Optimistic delete local + devolver pixel
         setPixels(prev => {
           const next = { ...prev };
           delete next[key];
           return next;
         });
         incrementLocal();
-        refetch(); // Forzar refetch para arreglar cooldown dates
+        refetch();
       } else {
-        setToast({ message: `No puedes borrar los píxeles de otras personas.`, type: 'error' });
-        setTimeout(() => setToast(null), 3000);
+        showToast('No puedes borrar los píxeles de otras personas.', 'error');
       }
     }
-  }, [remaining, user, pixels, incrementLocal, refetch]);
+  }, [remaining, user, isBanned, pixels, incrementLocal, refetch, showToast]);
 
   // Mouse events
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Middle button or shift+left = pan
     if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
       e.preventDefault();
       setIsPanning(true);
@@ -290,12 +308,9 @@ export default function PixelCanvas() {
 
     const grid = screenToGrid(e.clientX, e.clientY);
 
-    // Left click = paint
     if (e.button === 0) {
       paintPixel(grid.x, grid.y);
-    } 
-    // Right click = delete
-    else if (e.button === 2) {
+    } else if (e.button === 2) {
       e.preventDefault();
       deletePixel(grid.x, grid.y);
     }
@@ -306,15 +321,11 @@ export default function PixelCanvas() {
       setOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
       return;
     }
-
     const grid = screenToGrid(e.clientX, e.clientY);
     setMousePos(grid);
   }, [isPanning, panStart, screenToGrid]);
 
-  const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
-  }, []);
-
+  const handleMouseUp = useCallback(() => { setIsPanning(false); }, []);
   const handleMouseLeave = useCallback(() => {
     setIsPanning(false);
     setMousePos({ x: -1, y: -1 });
@@ -334,7 +345,6 @@ export default function PixelCanvas() {
     const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
     const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prevZoom + delta * prevZoom));
 
-    // Zoom towards mouse position
     const scale = newZoom / prevZoom;
     const newOffsetX = mouseX - (mouseX - offset.x) * scale;
     const newOffsetY = mouseY - (mouseY - offset.y) * scale;
@@ -358,20 +368,38 @@ export default function PixelCanvas() {
     }
   };
 
-  // Touch events for mobile
-  const lastTouchRef = useRef<{ x: number; y: number; dist: number } | null>(null);
+  // Touch events — with tap vs drag detection and mode support
+  // Ref stores: start position, accumulated movement, pinch distance
+  const lastTouchRef = useRef<{
+    x: number;
+    y: number;
+    startX: number;
+    startY: number;
+    dist: number;
+    totalMoved: number;
+  } | null>(null);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 1) {
       const touch = e.touches[0];
-      lastTouchRef.current = { x: touch.clientX, y: touch.clientY, dist: 0 };
+      lastTouchRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        dist: 0,
+        totalMoved: 0,
+      };
     } else if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       lastTouchRef.current = {
-        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        x: midX, y: midY,
+        startX: midX, startY: midY,
         dist: Math.hypot(dx, dy),
+        totalMoved: 0,
       };
     }
   }, []);
@@ -381,14 +409,25 @@ export default function PixelCanvas() {
     if (!lastTouchRef.current) return;
 
     if (e.touches.length === 1) {
-      // Pan
       const touch = e.touches[0];
       const dx = touch.clientX - lastTouchRef.current.x;
       const dy = touch.clientY - lastTouchRef.current.y;
-      setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
-      lastTouchRef.current = { x: touch.clientX, y: touch.clientY, dist: 0 };
+      const stepMoved = Math.hypot(dx, dy);
+
+      // Siempre acumular movimiento para detectar si fue tap
+      lastTouchRef.current = {
+        ...lastTouchRef.current,
+        x: touch.clientX,
+        y: touch.clientY,
+        totalMoved: lastTouchRef.current.totalMoved + stepMoved,
+      };
+
+      // Sólo pan si: modo pan activo, O si se movió más del umbral
+      if (touchMode === 'pan' || lastTouchRef.current.totalMoved > TAP_THRESHOLD) {
+        setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      }
     } else if (e.touches.length === 2) {
-      // Pinch zoom
+      // Pinch zoom — siempre activo
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const newDist = Math.hypot(dx, dy);
@@ -411,19 +450,32 @@ export default function PixelCanvas() {
       }
 
       setZoom(newZoom);
-      lastTouchRef.current = { x: midX, y: midY, dist: newDist };
+      lastTouchRef.current = {
+        ...lastTouchRef.current,
+        x: midX, y: midY,
+        dist: newDist,
+        totalMoved: lastTouchRef.current.totalMoved + 1,
+      };
     }
-  }, [zoom]);
+  }, [zoom, touchMode]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    // If it was a single tap (no significant movement), paint
-    if (e.changedTouches.length === 1 && lastTouchRef.current && lastTouchRef.current.dist === 0) {
+    if (!lastTouchRef.current) return;
+
+    // Solo ejecutar acción si fue tap (movimiento mínimo) y 1 dedo
+    if (e.changedTouches.length === 1 && lastTouchRef.current.totalMoved < TAP_THRESHOLD) {
       const touch = e.changedTouches[0];
       const grid = screenToGrid(touch.clientX, touch.clientY);
-      paintPixel(grid.x, grid.y);
+
+      if (touchMode === 'draw') {
+        paintPixel(grid.x, grid.y);
+      } else if (touchMode === 'erase') {
+        deletePixel(grid.x, grid.y);
+      }
+      // touchMode === 'pan': no action on tap
     }
     lastTouchRef.current = null;
-  }, [screenToGrid, paintPixel]);
+  }, [touchMode, screenToGrid, paintPixel, deletePixel]);
 
   if (authLoading) {
     return (
@@ -486,10 +538,21 @@ export default function PixelCanvas() {
         </div>
       </header>
 
+      {/* Banner de cuenta baneada */}
+      {isBanned && (
+        <div className="banned-banner">
+          <span className="banned-banner-icon">⛔</span>
+          <div className="banned-banner-text">
+            <strong>Tu cuenta ha sido suspendida.</strong>
+            {' '}No puedes dibujar en el lienzo por violar las normas de la comunidad.
+          </div>
+        </div>
+      )}
+
       {/* Canvas */}
       <div
         ref={wrapperRef}
-        className={`canvas-wrapper ${isPanning ? 'panning' : ''}`}
+        className={`canvas-wrapper ${isPanning ? 'panning' : ''} ${isBanned ? 'with-banner' : ''}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -523,7 +586,7 @@ export default function PixelCanvas() {
         </div>
       )}
 
-      {/* Controls Legend */}
+      {/* Controls Legend (desktop only) */}
       <div className="controls-legend">
         <div className="controls-legend-title">🎮 Controles</div>
         <div className="controls-list">
@@ -544,6 +607,34 @@ export default function PixelCanvas() {
             <div className="control-desc">Acercar o alejar zoom</div>
           </div>
         </div>
+      </div>
+
+      {/* Mobile Toolbar — only visible on mobile */}
+      <div className="mobile-toolbar">
+        <button
+          className={`mobile-tool-btn ${touchMode === 'draw' ? 'active draw' : ''}`}
+          onClick={() => setTouchMode('draw')}
+          id="mobile-tool-draw"
+        >
+          <span className="mobile-tool-icon">✏️</span>
+          <span className="mobile-tool-label">Dibujar</span>
+        </button>
+        <button
+          className={`mobile-tool-btn ${touchMode === 'erase' ? 'active erase' : ''}`}
+          onClick={() => setTouchMode('erase')}
+          id="mobile-tool-erase"
+        >
+          <span className="mobile-tool-icon">✕</span>
+          <span className="mobile-tool-label">Borrar</span>
+        </button>
+        <button
+          className={`mobile-tool-btn ${touchMode === 'pan' ? 'active pan' : ''}`}
+          onClick={() => setTouchMode('pan')}
+          id="mobile-tool-pan"
+        >
+          <span className="mobile-tool-icon">✋</span>
+          <span className="mobile-tool-label">Mover</span>
+        </button>
       </div>
 
       {/* Sidebar */}

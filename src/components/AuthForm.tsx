@@ -8,8 +8,9 @@ export default function AuthForm() {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
 
   const { signIn, signUp } = useAuthStore();
 
@@ -23,7 +24,6 @@ export default function AuthForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setSubmitting(true);
 
     if (isRegister) {
@@ -47,10 +47,12 @@ export default function AuthForm() {
       if (result.error) {
         setError(result.error);
       } else {
-        setSuccess('¡Cuenta creada con éxito! Revisa tu correo para confirmar tu cuenta, o inicia sesión directamente.');
+        // Guardar email para mostrarlo en el modal y limpiar formulario
+        setRegisteredEmail(email);
         setEmail('');
         setPassword('');
         setUsername('');
+        setShowConfirmModal(true);
       }
     } else {
       const result = await signIn(email, password);
@@ -67,7 +69,6 @@ export default function AuthForm() {
   const toggleMode = () => {
     setIsRegister(!isRegister);
     setError('');
-    setSuccess('');
   };
 
   return (
@@ -102,7 +103,6 @@ export default function AuthForm() {
           </div>
 
           {error && <div className="auth-alert error">{error}</div>}
-          {success && <div className="auth-alert success">{success}</div>}
 
           <form className="auth-form" onSubmit={handleSubmit} id="auth-form">
             {isRegister && (
@@ -176,6 +176,33 @@ export default function AuthForm() {
 
         <a href="/" className="auth-back">← Volver al inicio</a>
       </div>
+
+      {/* Modal de confirmación de correo */}
+      {showConfirmModal && (
+        <div className="confirm-modal-overlay" onClick={() => setShowConfirmModal(false)}>
+          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-modal-icon">✉️</div>
+            <h2 className="confirm-modal-title">¡Revisa tu correo!</h2>
+            <p className="confirm-modal-body">
+              Hemos enviado un enlace de confirmación a{' '}
+              <strong className="confirm-modal-email">{registeredEmail}</strong>.
+            </p>
+            <p className="confirm-modal-hint">
+              Debes confirmar tu cuenta antes de poder iniciar sesión. Si no ves el correo, revisa tu carpeta de spam.
+            </p>
+            <button
+              className="btn btn-primary confirm-modal-btn"
+              onClick={() => {
+                setShowConfirmModal(false);
+                setIsRegister(false);
+              }}
+              id="confirm-modal-ok-btn"
+            >
+              ✓ ¡Entendido, ya lo tengo!
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
